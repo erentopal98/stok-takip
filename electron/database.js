@@ -30,6 +30,8 @@ export function getDatabase() {
   return db
 }
 
+// ... önceki kodlar aynı ...
+
 function createTables(database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS products (
@@ -61,6 +63,28 @@ function createTables(database) {
       unit_price INTEGER NOT NULL DEFAULT 0,
       note TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id)
+    );
+
+    /* --- YENİ EKLENEN TABLOLAR --- */
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price INTEGER NOT NULL,
+      total_price INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (customer_id) REFERENCES customers(id),
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
   `)
@@ -498,4 +522,176 @@ export function getStockMovements(limit = 50) {
       LIMIT ?
     `)
     .all(safeLimit)
+}
+
+// electron/database.js dosyasının EN ALTINA ekleyin
+
+export function updateProduct(product) {
+  const database = getDatabase()
+
+  const id = Number(product.id)
+  if (!id) throw new Error('Güncellenecek ürün seçilmedi.')
+
+  const name = normalizeText(product.name)
+  if (!name) throw new Error('Ürün adı boş bırakılamaz.')
+
+  const minQuantity = normalizeNumber(product.minQuantity, 0)
+  const purchasePrice = normalizeNumber(product.purchasePrice, 0)
+  const retailPrice = normalizeNumber(product.retailPrice, 0)
+  const wholesalePrice = normalizeNumber(product.wholesalePrice, 0)
+
+  if (!Number.isInteger(minQuantity) || minQuantity < 0) {
+    throw new Error('Minimum stok negatif olamaz ve tam sayı olmalıdır.')
+  }
+  if (purchasePrice < 0 || retailPrice < 0 || wholesalePrice < 0) {
+    throw new Error('Fiyat bilgileri negatif olamaz.')
+  }
+
+  const updateStatement = database.prepare(`
+    UPDATE products SET
+      name = @name,
+      category = @category,
+      brand = @brand,
+      compatible_model = @compatibleModel,
+      color = @color,
+      barcode = @barcode,
+      sku = @sku,
+      min_quantity = @minQuantity,
+      purchase_price = @purchasePrice,
+      retail_price = @retailPrice,
+      wholesale_price = @wholesalePrice,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = @id
+  `)
+
+  try {
+    updateStatement.run({
+      id,
+      name,
+      category: normalizeText(product.category),
+      brand: normalizeText(product.brand),
+      compatibleModel: normalizeText(product.compatibleModel),
+      color: normalizeText(product.color),
+      barcode: normalizeText(product.barcode),
+      sku: normalizeText(product.sku),
+      minQuantity,
+      purchasePrice,
+      retailPrice,
+      wholesalePrice
+    })
+
+    return { success: true, id }
+  } catch (error) {
+    if (error.message.includes('UNIQUE constraint failed: products.barcode')) {
+      throw new Error('Bu barkod başka bir üründe kullanılıyor.')
+    }
+    if (error.message.includes('UNIQUE constraint failed: products.sku')) {
+      throw new Error('Bu stok kodu başka bir üründe kullanılıyor.')
+    }
+    throw error
+  }
+}
+
+// --- MÜŞTERİ VE SATIŞ FONKSİYONLARI ---
+
+export function getCustomers() {
+  const db = getDatabase();
+  // Tabloların ilk kez oluşturulduğundan emin oluyoruz
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS sales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price INTEGER NOT NULL,
+      total_price INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (customer_id) REFERENCES customers(id),
+      FOREIGN KEY (product_id) REFERENCES products(id)
+    );
+  `);
+
+  return db.prepare(`SELECT id, name, phone, email, note, created_at AS createdAt FROM customers ORDER BY name ASC`).all();
+}
+
+export function addCustomer(customer) {
+  const db = getDatabase();
+  const name = customer.name ? customer.name.trim() : '';
+  if (!name) throw new Error("Müşteri adı boş olamaz.");
+
+  const result = db.prepare(`
+    INSERT INTO customers (name, phone, email, note)
+    VALUES (@name, @phone, @email, @note)
+  `).run({
+    name,
+    phone: customer.phone ? customer.phone.trim() : '',
+    email: customer.email ? customer.email.trim() : '',
+    note: customer.note ? customer.note.trim() : ''
+  });
+  return { success: true, id: result.lastInsertRowid };
+}
+
+export function makeSale(payload) {
+  const db = getDatabase();
+  
+  const customerId = Number(payload.customerId);
+  const productId = Number(payload.productId);
+  const quantity = Number(payload.quantity);
+  const unitPrice = Number(payload.unitPrice) || 0;
+  const totalPrice = quantity * unitPrice;
+
+  if (!customerId) throw new Error('Müşteri seçilmedi.');
+  if (!productId) throw new Error('Ürün seçilmedi.');
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Geçerli bir adet giriniz.');
+
+  const getProduct = db.prepare('SELECT current_quantity FROM products WHERE id = ? AND is_active = 1');
+  const updateProduct = db.prepare('UPDATE products SET current_quantity = @newQuantity WHERE id = @id');
+  const insertSale = db.prepare(`
+    INSERT INTO sales (customer_id, product_id, quantity, unit_price, total_price)
+    VALUES (@customerId, @productId, @quantity, @unitPrice, @totalPrice)
+  `);
+  const insertMovement = db.prepare(`
+    INSERT INTO stock_movements (product_id, movement_type, quantity, previous_quantity, new_quantity, unit_price, note)
+    VALUES (@productId, 'STOCK_OUT', @quantity, @prevQty, @newQty, @unitPrice, @note)
+  `);
+
+  const saleTransaction = db.transaction(() => {
+    const product = getProduct.get(productId);
+    if (!product) throw new Error("Ürün bulunamadı.");
+    
+    const prevQty = Number(product.current_quantity);
+    const newQty = prevQty - quantity;
+
+    if (newQty < 0) throw new Error(`Yetersiz stok! Mevcut stok: ${prevQty}`);
+
+    insertSale.run({ customerId, productId, quantity, unitPrice, totalPrice });
+    updateProduct.run({ newQuantity: newQty, id: productId });
+    insertMovement.run({ 
+      productId, quantity: -quantity, prevQty, newQty, unitPrice, 
+      note: 'Müşteriye Satış' 
+    });
+
+    return { success: true };
+  });
+
+  return saleTransaction();
+}
+
+export function getCustomerSales(customerId) {
+  return getDatabase().prepare(`
+    SELECT s.id, s.quantity, s.unit_price AS unitPrice, s.total_price AS totalPrice, s.created_at AS createdAt,
+           p.name AS productName, p.category, p.color
+    FROM sales s
+    INNER JOIN products p ON s.product_id = p.id
+    WHERE s.customer_id = ?
+    ORDER BY s.created_at DESC
+  `).all(Number(customerId));
 }

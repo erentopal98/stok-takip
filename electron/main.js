@@ -1,110 +1,69 @@
-import process from 'node:process'
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
-import { existsSync } from 'node:fs'
-
+import path from 'path'
+import { fileURLToPath } from 'url'
 import {
-  testDatabaseConnection,
-  getProducts,
-  addProduct,
-  updateStock,
-  deactivateProduct,
-  getStockMovements
+  testDatabaseConnection, getProducts, addProduct, updateStock, deactivateProduct, getStockMovements, updateProduct,
+  getCustomers, addCustomer, makeSale, getCustomerSales
 } from './database.js'
 
-console.log('Electron main.js başladı')
-
 const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const __dirname = path.dirname(__filename)
 
-const isDevelopment = process.env.NODE_ENV === 'development'
-const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173'
-
-function registerIpcHandlers() {
-  ipcMain.handle('db:test', () => {
-    return testDatabaseConnection()
-  })
-
-  ipcMain.handle('products:getAll', () => {
-    return getProducts()
-  })
-
-  ipcMain.handle('products:add', (_event, product) => {
-    return addProduct(product)
-  })
-
-  ipcMain.handle('products:updateStock', (_event, payload) => {
-    return updateStock(payload)
-  })
-
-  ipcMain.handle('products:deactivate', (_event, productId) => {
-    return deactivateProduct(productId)
-  })
-
-  ipcMain.handle('stockMovements:getRecent', () => {
-    return getStockMovements()
-  })
-}
+let mainWindow
 
 function createWindow() {
-  console.log('Electron window oluşturuluyor...')
-
-  const preloadPath = join(__dirname, 'preload.cjs')
-
-  console.log('Preload path:', preloadPath)
-  console.log('Preload dosyası var mı:', existsSync(preloadPath))
-
-  const win = new BrowserWindow({
-    width: 1300,
-    height: 850,
-    minWidth: 1000,
-    minHeight: 700,
-    show: true,
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
     webPreferences: {
-      preload: preloadPath,
-      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
-      sandbox: false
+      nodeIntegration: false
     }
   })
 
-  win.once('ready-to-show', () => {
-    console.log('Electron window hazır')
-    win.show()
-  })
-
-  if (isDevelopment) {
-    console.log('Development URL yükleniyor:', devServerUrl)
-    win.loadURL(devServerUrl)
-
-    // Geliştirme sırasında açık kalsın.
-    // İstersen sonra yorum satırı yaparız.
-    // win.webContents.openDevTools()
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.loadURL('http://127.0.0.1:5173')
+    mainWindow.webContents.openDevTools()
   } else {
-    const indexPath = join(__dirname, '../dist/index.html')
-    console.log('Production dosyası yükleniyor:', indexPath)
-    win.loadFile(indexPath)
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 }
 
+function registerIpcHandlers() {
+  // Veritabanı Test
+  ipcMain.handle('db:test', () => testDatabaseConnection())
+
+  // Ürün IPC Handlers
+  ipcMain.handle('products:getAll', () => getProducts())
+  ipcMain.handle('products:add', (_event, product) => addProduct(product))
+  ipcMain.handle('products:update', (_event, product) => updateProduct(product))
+  ipcMain.handle('products:deactivate', (_event, id) => deactivateProduct(id))
+
+  // Stok IPC Handlers
+  ipcMain.handle('stock:update', (_event, movement) => updateStock(movement))
+  ipcMain.handle('stock:getMovements', () => getStockMovements())
+
+  // Müşteri ve Satış IPC Handlers
+  ipcMain.handle('customers:getAll', () => getCustomers())
+  ipcMain.handle('customers:add', (_event, customer) => addCustomer(customer))
+  ipcMain.handle('sales:make', (_event, payload) => makeSale(payload))
+  ipcMain.handle('sales:getByCustomer', (_event, customerId) => getCustomerSales(customerId))
+}
+
+// KÖK NEDENİ ÇÖZEN YER: Başlatma zincirine .catch() ekledik. 
+// Eğer bir hata varsa, gizlenmeyecek ve terminale kabak gibi yazılacak.
 app.whenReady().then(() => {
-  console.log('Electron app ready')
-
-  registerIpcHandlers()
   createWindow()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
-  })
+  registerIpcHandlers()
+}).catch((err) => {
+  console.error("!!! ELECTRON BAŞLATMA SIRASINDA KRİTİK HATA !!!", err)
 })
 
 app.on('window-all-closed', () => {
-  console.log('Tüm pencereler kapandı')
+  if (process.platform !== 'darwin') app.quit()
+})
 
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow()
 })

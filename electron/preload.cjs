@@ -1,30 +1,19 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
-console.log('[PRELOAD] preload.cjs başladı')
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Ürün işlemleri
+  getProducts: () => ipcRenderer.invoke('products:getAll'),
+  addProduct: (product) => ipcRenderer.invoke('products:add', product),
+  updateProduct: (product) => ipcRenderer.invoke('products:update', product),
+  deactivateProduct: (id) => ipcRenderer.invoke('products:deactivate', id),
+  
+  // Stok işlemleri
+  updateStock: (movement) => ipcRenderer.invoke('stock:update', movement),
+  getStockMovements: () => ipcRenderer.invoke('stock:getMovements'),
 
-try {
-  const api = {
-    testDatabase: () => ipcRenderer.invoke('db:test'),
-    getProducts: () => ipcRenderer.invoke('products:getAll'),
-    addProduct: (product) => ipcRenderer.invoke('products:add', product),
-    updateStock: (payload) => ipcRenderer.invoke('products:updateStock', payload),
-    deactivateProduct: (productId) => ipcRenderer.invoke('products:deactivate', productId),
-    getStockMovements: () => ipcRenderer.invoke('stockMovements:getRecent')
-  }
-
-  contextBridge.exposeInMainWorld('electronAPI', api)
-
-  contextBridge.exposeInMainWorld('preloadStatus', {
-    loaded: true,
-    message: 'preload.cjs başarıyla çalıştı'
-  })
-
-  console.log('[PRELOAD] electronAPI başarıyla expose edildi')
-} catch (error) {
-  console.error('[PRELOAD] Hata oluştu:', error)
-
-  contextBridge.exposeInMainWorld('preloadStatus', {
-    loaded: false,
-    message: error.message
-  })
-}
+  // Müşteri ve Satış işlemleri
+  getCustomers: () => ipcRenderer.invoke('customers:getAll'),
+  addCustomer: (customer) => ipcRenderer.invoke('customers:add', customer),
+  makeSale: (payload) => ipcRenderer.invoke('sales:make', payload),
+  getCustomerSales: (customerId) => ipcRenderer.invoke('sales:getByCustomer', customerId)
+})

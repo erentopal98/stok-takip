@@ -3,7 +3,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import {
   testDatabaseConnection, getProducts, addProduct, updateStock, deactivateProduct, getStockMovements, updateProduct,
-  getCustomers, addCustomer, makeSale, getCustomerSales
+  getCustomers, addCustomer, updateCustomer, deleteCustomer, makeSale, getCustomerSales, 
+  addPayment, getCustomerPayments, getDashboardStats
 } from './database.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -13,12 +14,10 @@ let mainWindow
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1200, height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false
+      contextIsolation: true, nodeIntegration: false
     }
   })
 
@@ -31,39 +30,36 @@ function createWindow() {
 }
 
 function registerIpcHandlers() {
-  // Veritabanı Test
-  ipcMain.handle('db:test', () => testDatabaseConnection())
-
-  // Ürün IPC Handlers
-  ipcMain.handle('products:getAll', () => getProducts())
-  ipcMain.handle('products:add', (_event, product) => addProduct(product))
-  ipcMain.handle('products:update', (_event, product) => updateProduct(product))
-  ipcMain.handle('products:deactivate', (_event, id) => deactivateProduct(id))
-
-  // Stok IPC Handlers
-  ipcMain.handle('stock:update', (_event, movement) => updateStock(movement))
-  ipcMain.handle('stock:getMovements', () => getStockMovements())
-
-  // Müşteri ve Satış IPC Handlers
-  ipcMain.handle('customers:getAll', () => getCustomers())
-  ipcMain.handle('customers:add', (_event, customer) => addCustomer(customer))
-  ipcMain.handle('sales:make', (_event, payload) => makeSale(payload))
-  ipcMain.handle('sales:getByCustomer', (_event, customerId) => getCustomerSales(customerId))
+  ipcMain.handle('db:test', () => testDatabaseConnection());
+  
+  // Ürün ve Stok İşlemleri (Kurşun Geçirmez Hata Yakalama Eklendi)
+  ipcMain.handle('products:getAll', async () => { try { return getProducts(); } catch(err) { return []; } });
+  ipcMain.handle('products:add', async (_event, product) => { try { return addProduct(product); } catch(err) { throw err; } });
+  ipcMain.handle('products:update', async (_event, product) => { try { return updateProduct(product); } catch(err) { throw err; } });
+  ipcMain.handle('products:deactivate', async (_event, id) => { try { return deactivateProduct(id); } catch(err) { throw err; } });
+  
+  ipcMain.handle('stock:update', async (_event, movement) => { try { return updateStock(movement); } catch(err) { throw err; } });
+  ipcMain.handle('stock:getMovements', async () => { try { return getStockMovements(); } catch(err) { return []; } });
+  
+  // Müşteri, Satış, Ödeme ve Dashboard İşlemleri
+  ipcMain.handle('customers:getAll', () => getCustomers());
+  ipcMain.handle('customers:add', async (_event, customer) => { try { return addCustomer(customer); } catch (err) { throw err; } });
+  ipcMain.handle('customers:update', async (_event, customer) => { try { return updateCustomer(customer); } catch (err) { throw err; } });
+  ipcMain.handle('customers:delete', async (_event, id) => { try { return deleteCustomer(id); } catch (err) { throw err; } });
+  
+  ipcMain.handle('sales:make', async (_event, payload) => { try { return makeSale(payload); } catch (err) { throw err; } });
+  ipcMain.handle('sales:getByCustomer', async (_event, customerId) => { try { return getCustomerSales(customerId); } catch (err) { return []; } });
+  
+  ipcMain.handle('payments:add', async (_event, payload) => { try { return addPayment(payload); } catch (err) { throw err; } });
+  ipcMain.handle('payments:getByCustomer', async (_event, customerId) => { try { return getCustomerPayments(customerId); } catch (err) { return []; } });
+  
+  ipcMain.handle('dashboard:getStats', async () => { try { return getDashboardStats(); } catch (err) { return null; } });
 }
 
-// KÖK NEDENİ ÇÖZEN YER: Başlatma zincirine .catch() ekledik. 
-// Eğer bir hata varsa, gizlenmeyecek ve terminale kabak gibi yazılacak.
 app.whenReady().then(() => {
   createWindow()
   registerIpcHandlers()
-}).catch((err) => {
-  console.error("!!! ELECTRON BAŞLATMA SIRASINDA KRİTİK HATA !!!", err)
-})
+}).catch((err) => console.error("!!! ELECTRON BAŞLATMA HATASI !!!", err))
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
-
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow()
-})
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

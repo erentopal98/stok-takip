@@ -1,0 +1,14 @@
+appId: com.stok.takip
+productName: Stok Takip
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+asarUnpack:
+  - node_modules/better-sqlite3/**
+compression: normal
+win:
+  target: nsis
+  signAndEditExecutable: false
+directories:
+  output: dist-installer-catalog

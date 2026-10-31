@@ -1,0 +1,8 @@
+appId: com.stok.takip
+productName: Stok Takip
+asarUnpack:
+  - node_modules/better-sqlite3/**
+win:
+  target: nsis
+directories:
+  output: dist-electron-release

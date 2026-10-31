@@ -1,14 +1,16 @@
 {
   "name": "stok-takip",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Stok, satış ve cari hesap takibi için masaüstü uygulaması.",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently -k -n VITE,ELECTRON -c green,blue \"npm run dev:vite\" \"npm run dev:electron\"",
-    "dev:vite": "vite --host 127.0.0.1 --port 5173",
-    "dev:electron": "wait-on tcp:127.0.0.1:5173 --timeout 30000 && cross-env NODE_ENV=development VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "dev": "node scripts/dev.js",
+    "dev:vite": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:electron": "wait-on http-get://127.0.0.1:5173/ --timeout 30000 && cross-env NODE_ENV=development VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "build": "vite build && electron-builder",
+    "test": "node tests/run-database-stress.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -16,7 +18,8 @@
     "better-sqlite3": "^12.10.0",
     "lucide-react": "^1.23.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -44,6 +47,11 @@
     "win": {
       "target": "nsis"
     },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
     "directories": {
       "output": "dist-electron"
     },

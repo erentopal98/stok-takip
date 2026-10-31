@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-electron*/
+dist-installer-*/
+dist-installer-clean-db3.zip
 *.local
 
 # Editor directories and files

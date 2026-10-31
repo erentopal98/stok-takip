@@ -29,7 +29,7 @@ function money(value) {
 
 function groupForRange(startDate, endDate) {
   const days = Math.max(1, Math.round((parseDate(endDate) - parseDate(startDate)) / DAY_MS) + 1)
-  return days <= 45 ? 'day' : days <= 150 ? 'week' : 'month'
+  return days <= 10 ? 'day' : days <= 150 ? 'week' : 'month'
 }
 
 function makeChartRows(startDate, endDate, grouping, trendStats) {
@@ -55,7 +55,8 @@ function makeChartRows(startDate, endDate, grouping, trendStats) {
     const finalWeek = mondayOf(through)
     while (cursor <= finalWeek) {
       const key = dateKey(cursor)
-      rows.push({ period: key, label: cursor.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }), sales: Number(data.get(key)?.netSales || 0), collections: Number(data.get(key)?.collections || 0) })
+      const labelDate = cursor < from ? from : cursor
+      rows.push({ period: key, label: labelDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }), sales: Number(data.get(key)?.netSales || 0), collections: Number(data.get(key)?.collections || 0) })
       cursor.setDate(cursor.getDate() + 7)
     }
   } else {
@@ -105,7 +106,7 @@ function SalesChart({ rows, loading, showSales, showCollections }) {
   const showValueLabels = rows.length <= 45
   const useCompactLabels = rows.length > 7
   const labels = layoutSalesChartLabels(rows.flatMap((row, index) => {
-    const pairWidth = showSales && showCollections ? barWidth * 2 + 6 : barWidth
+      const pairWidth = showSales && showCollections ? barWidth * 2 + 14 : barWidth
     const x = categoryCenters[index] - pairWidth / 2
     const candidates = []
     if (showValueLabels && showSales && row.sales > 0) {
@@ -113,7 +114,7 @@ function SalesChart({ rows, loading, showSales, showCollections }) {
       candidates.push({ key: `${row.period}-sales`, text: compactMoney(row.sales, useCompactLabels), value: row.sales, series: 'sales', x: x + barWidth / 2, y: baseline - height - 8 })
     }
     if (showValueLabels && showCollections && row.collections > 0) {
-      const collectionX = x + (showSales ? barWidth + 6 : 0)
+      const collectionX = x + (showSales ? barWidth + 14 : 0)
       const height = (row.collections / domainMax) * chartHeight
       candidates.push({ key: `${row.period}-collections`, text: compactMoney(row.collections, useCompactLabels), value: row.collections, series: 'collections', x: collectionX + barWidth / 2, y: baseline - height - 8 })
     }
@@ -132,14 +133,14 @@ function SalesChart({ rows, loading, showSales, showCollections }) {
           {rows.map((row, index) => {
             const salesHeight = row.sales > 0 ? Math.max(1, (row.sales / domainMax) * chartHeight) : 0
             const collectionHeight = row.collections > 0 ? Math.max(1, (row.collections / domainMax) * chartHeight) : 0
-            const pairWidth = showSales && showCollections ? barWidth * 2 + 6 : barWidth
+            const pairWidth = showSales && showCollections ? barWidth * 2 + 14 : barWidth
             const groupCenter = categoryCenters[index]
             const x = groupCenter - pairWidth / 2
             return (
               <g key={row.period}>
                 <title>{`${row.label} · Satış: ${money(row.sales)} · Tahsilat: ${money(row.collections)}`}</title>
                 {showSales && salesHeight > 0 && <rect x={x} y={baseline - salesHeight} width={barWidth} height={salesHeight} rx="4" fill="#4f46e5"><title>{`Satış: ${money(row.sales)}`}</title></rect>}
-                {showCollections && collectionHeight > 0 && <rect x={x + (showSales ? barWidth + 6 : 0)} y={baseline - collectionHeight} width={barWidth} height={collectionHeight} rx="4" fill="#0f766e"><title>{`Tahsilat: ${money(row.collections)}`}</title></rect>}
+                {showCollections && collectionHeight > 0 && <rect x={x + (showSales ? barWidth + 14 : 0)} y={baseline - collectionHeight} width={barWidth} height={collectionHeight} rx="4" fill="#0f766e"><title>{`Tahsilat: ${money(row.collections)}`}</title></rect>}
                 {labels.filter((label) => label.key === `${row.period}-sales`).map((label) => <text key={label.key} x={label.x} y={label.y} textAnchor="middle" fill="#3730a3" fontSize={rows.length > 12 ? 10 : 12} fontWeight="600"><title>{`Satış: ${money(label.value)}`}</title>{label.text}</text>)}
                 {labels.filter((label) => label.key === `${row.period}-collections`).map((label) => <text key={label.key} x={label.x} y={label.y} textAnchor="middle" fill="#0f766e" fontSize={rows.length > 12 ? 10 : 12} fontWeight="600"><title>{`Tahsilat: ${money(label.value)}`}</title>{label.text}</text>)}
                 <text x={groupCenter} y="300" textAnchor="middle" fill="#64748b" fontSize={rows.length > 12 ? 10 : 12}>{row.label}</text>
@@ -406,7 +407,7 @@ export default function Dashboard({ onNavigate }) {
             belowControl={<ProfitInfo />}
             tone={dataUnavailable ? 'neutral' : verifiedGrossProfit > 0 ? 'positive' : verifiedGrossProfit < 0 ? 'negative' : 'neutral'}
           />
-          <SmallMetric title="Müşterilerden kalan borç" value={dataUnavailable ? '—' : money(stats.outstandingBalance?.amount)} detail={`${Number(stats.outstandingBalance?.customerCount || 0)} müşterinin açık borcu · Müşterileri aç`} tone={!dataUnavailable && Number(stats.outstandingBalance?.amount || 0) > 0 ? 'debt' : 'neutral'} onClick={() => onNavigate?.('customers')} />
+          <SmallMetric title="Müşterilerden kalan borç" value={dataUnavailable ? '—' : money(stats.outstandingBalance?.amount)} detail={`${Number(stats.outstandingBalance?.customerCount || 0)} borçlu müşteri · Görüntüle`} tone={!dataUnavailable && Number(stats.outstandingBalance?.amount || 0) > 0 ? 'debt' : 'neutral'} onClick={() => onNavigate?.('customers')} />
           <SmallMetric
             title="Mal alımı"
             value={dataUnavailable ? '—' : money(stats.stockPurchaseTotal ?? stats.allTimeStats?.totalStockExpenses)}
@@ -468,7 +469,7 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </section>
 
-      <section aria-label="Envanter ve stok durumu" className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <section aria-label="Envanter ve stok durumu" className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <button type="button" aria-expanded={showCategories} onClick={() => setShowCategories((value) => !value)} className="flex w-full items-center justify-between gap-3 p-5 text-left transition hover:bg-slate-50 sm:p-6">
             <span className="flex min-w-0 items-center gap-3">
@@ -482,17 +483,21 @@ export default function Dashboard({ onNavigate }) {
           </button>
           {showCategories && (
             <div className="border-t border-slate-100 px-5 py-2 sm:px-6">
-              {stats.categoryInventory?.length ? stats.categoryInventory.map((category) => (
-                <div key={category.category} className="flex items-center justify-between gap-4 border-b border-slate-100 py-3 last:border-0">
-                  <span className="truncate text-sm font-medium text-slate-700">{category.category}</span>
-                  <span className="shrink-0 text-right text-sm tabular-nums text-slate-500"><strong className="font-semibold text-slate-800">{Number(category.productCount).toLocaleString('tr-TR')}</strong> çeşit · {Number(category.unitCount).toLocaleString('tr-TR')} adet</span>
+              {stats.categoryInventory?.length ? (
+                <div aria-label="Kategoriye göre envanter" className="max-h-[228px] overflow-y-auto overscroll-contain pr-1">
+                  {stats.categoryInventory.map((category) => (
+                    <div key={category.category} className="flex items-center justify-between gap-4 border-b border-slate-100 py-3 last:border-0">
+                      <span className="truncate text-sm font-medium text-slate-700">{category.category}</span>
+                      <span className="shrink-0 text-right text-sm tabular-nums text-slate-500"><strong className="font-semibold text-slate-800">{Number(category.productCount).toLocaleString('tr-TR')}</strong> çeşit · {Number(category.unitCount).toLocaleString('tr-TR')} adet</span>
+                    </div>
+                  ))}
                 </div>
-              )) : <p className="py-3 text-sm text-slate-500">{isLoading ? 'Envanter yükleniyor…' : loadError ? 'Envanter bilgisi alınamadı.' : 'Henüz ürün eklenmemiş.'}</p>}
+              ) : <p className="py-3 text-sm text-slate-500">{isLoading ? 'Envanter yükleniyor…' : loadError ? 'Envanter bilgisi alınamadı.' : 'Henüz ürün eklenmemiş.'}</p>}
             </div>
           )}
         </div>
 
-        <section aria-label="Stok durumu" className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+        <section aria-label="Stok durumu" className="self-start rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-slate-800">Stok Durumu</h2>
             {stockAlertCount > 0 && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">{stockAlertCount} ürün</span>}

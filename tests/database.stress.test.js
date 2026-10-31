@@ -299,9 +299,9 @@ try {
       `)
       for (let index = 1; index <= 120; index += 1) addHistoryRows.run(`test:history-page-limit-${index}`)
 
-      const firstPage = api.getActivityHistory({ page: 1, pageSize: 50, startDate: today, endDate: today })
-      const secondPage = api.getActivityHistory({ page: 2, pageSize: 50, startDate: today, endDate: today })
-      const thirdPage = api.getActivityHistory({ page: 3, pageSize: 50, startDate: today, endDate: today })
+      const firstPage = api.getActivityHistory({ page: 1, pageSize: 50, search: 'sayfalama sınır kontrolü', startDate: today, endDate: today })
+      const secondPage = api.getActivityHistory({ page: 2, pageSize: 50, search: 'sayfalama sınır kontrolü', startDate: today, endDate: today })
+      const thirdPage = api.getActivityHistory({ page: 3, pageSize: 50, search: 'sayfalama sınır kontrolü', startDate: today, endDate: today })
       assert.equal(firstPage.total, 120)
       assert.equal(firstPage.pageCount, 3)
       assert.equal(firstPage.items.length, 50)

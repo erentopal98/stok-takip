@@ -1396,11 +1396,11 @@ export function getActivityHistory(options = {}) {
   if (month) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Geçerli bir ay ve yıl seçin.')
     const [year, monthNumber] = month.split('-').map(Number)
-    const startDate = `${month}-01`
-    const endDate = new Date(Date.UTC(year, monthNumber, 1)).toISOString().slice(0, 10)
-    clauses.push("date(created_at, 'localtime') >= @startDate AND date(created_at, 'localtime') < @endDate")
-    parameters.startDate = startDate
-    parameters.endDate = endDate
+    const monthStart = `${month}-01`
+    const monthEnd = new Date(Date.UTC(year, monthNumber, 1)).toISOString().slice(0, 10)
+    clauses.push("created_at >= datetime(@monthStart, 'utc') AND created_at < datetime(@monthEnd, 'utc')")
+    parameters.monthStart = monthStart
+    parameters.monthEnd = monthEnd
   }
 
   const validDate = (value) => {
@@ -1415,11 +1415,11 @@ export function getActivityHistory(options = {}) {
   if (options.endDate && !endDate) throw new Error('Bitiş tarihi geçersiz.')
   if (startDate && endDate && startDate > endDate) throw new Error('Başlangıç tarihi bitiş tarihinden sonra olamaz.')
   if (startDate) {
-    clauses.push("date(created_at, 'localtime') >= @startDate")
+    clauses.push("created_at >= datetime(@startDate, 'utc')")
     parameters.startDate = startDate
   }
   if (endDate) {
-    clauses.push("date(created_at, 'localtime') <= @endDate")
+    clauses.push("created_at < datetime(date(@endDate, '+1 day'), 'utc')")
     parameters.endDate = endDate
   }
 

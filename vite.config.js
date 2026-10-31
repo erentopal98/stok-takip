@@ -13,5 +13,21 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    {
+      name: 'electron-production-content-security-policy',
+      apply: 'build',
+      transformIndexHtml() {
+        return {
+          tags: [{
+            tag: 'meta',
+            attrs: {
+              'http-equiv': 'Content-Security-Policy',
+              content: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+            },
+            injectTo: 'head'
+          }]
+        }
+      }
+    }
   ],
 })

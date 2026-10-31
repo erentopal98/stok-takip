@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Search } from 'lucide-react';
 
@@ -33,14 +33,27 @@ export default function SearchableSelect({
     );
   }, [options, query]);
 
+  const restoreSelectedQuery = useCallback(() => {
+    const currentSelection = options.find((option) => String(option.value) === String(value));
+    const displayLabel = currentSelection
+      ? (String(currentSelection.value ?? '') === '' && emptyDisplay ? emptyDisplay : currentSelection.label)
+      : (emptyDisplay ?? '');
+    if (controlledQuery === undefined) setInternalQuery(displayLabel);
+    onQueryChange?.(displayLabel);
+    setActiveIndex(0);
+  }, [options, value, emptyDisplay, controlledQuery, onQueryChange]);
+
   useEffect(() => {
     if (!isOpen) return undefined;
     function handleOutsideClick(event) {
-      if (!rootRef.current?.contains(event.target) && !popupRef.current?.contains(event.target)) setIsOpen(false);
+      if (!rootRef.current?.contains(event.target) && !popupRef.current?.contains(event.target)) {
+        setIsOpen(false);
+        restoreSelectedQuery();
+      }
     }
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [isOpen]);
+  }, [isOpen, restoreSelectedQuery]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -81,12 +94,17 @@ export default function SearchableSelect({
 
   function handleKeyDown(event) {
     if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
       setIsOpen(false);
+      restoreSelectedQuery();
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();
       if (!isOpen && !openOnFocus && value) updateQuery('');
       setIsOpen(true);
-      setActiveIndex((index) => Math.min(index + 1, Math.max(filteredOptions.length - 1, 0)));
+      setActiveIndex((index) => isOpen
+        ? Math.min(index + 1, Math.max(filteredOptions.length - 1, 0))
+        : 0);
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       setActiveIndex((index) => Math.max(index - 1, 0));
@@ -103,8 +121,10 @@ export default function SearchableSelect({
         <input
           type="search"
           role="combobox"
+          aria-label={searchPlaceholder || placeholder}
           aria-expanded={isOpen}
           aria-controls={listboxId}
+          aria-activedescendant={isOpen && filteredOptions[activeIndex] ? `${listboxId}-option-${activeIndex}` : undefined}
           aria-autocomplete="list"
           value={query}
           onFocus={(event) => {
@@ -146,6 +166,7 @@ export default function SearchableSelect({
           {filteredOptions.length ? filteredOptions.map((option, index) => (
             <button
               key={option.value}
+              id={`${listboxId}-option-${index}`}
               type="button"
               role="option"
               aria-selected={String(option.value) === String(value)}

@@ -67,6 +67,11 @@ export default function Customers() {
   const [customerSortDirection, setCustomerSortDirection] = useState('asc');
   const [productSearch, setProductSearch] = useState('');
   const productOptionsRequest = useRef(0);
+  const customerSubmitLock = useRef(false);
+  const saleSubmitLock = useRef(false);
+  const paymentSubmitLock = useRef(false);
+  const customerDataRequest = useRef(0);
+  const historyRequest = useRef(0);
   const [historyTab, setHistoryTab] = useState('sales');
   const [isExportingHistory, setIsExportingHistory] = useState(false);
   const [historyExportError, setHistoryExportError] = useState('');
@@ -82,10 +87,17 @@ export default function Customers() {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   async function loadData() {
+    const requestId = ++customerDataRequest.current;
     try {
       const custList = await window.electronAPI.getCustomers();
-      setCustomers(custList);
-    } catch (err) { console.error("Veriler yüklenirken hata:", err); }
+      if (requestId === customerDataRequest.current) {
+        setCustomers(custList);
+        setPageError('');
+      }
+    } catch (err) {
+      console.error('Müşteriler yüklenirken hata:', err);
+      if (requestId === customerDataRequest.current) setPageError(err.message || 'Müşteri listesi yüklenemedi.');
+    }
   }
 
   async function loadProductOptions(search) {
@@ -118,11 +130,12 @@ export default function Customers() {
 
   async function handleCustomerSubmit(e) {
     e.preventDefault();
+    if (customerSubmitLock.current) return;
     setFormError('');
     if (!customerForm.name || !customerForm.name.trim()) return setFormError('Lütfen müşteri adını giriniz.');
     const phone = customerForm.phone === '0' ? '' : customerForm.phone;
     if (!/^0\d{10}$/.test(phone)) return setFormError('Telefon zorunludur; 0 ile başlamalı ve toplam 11 hane olmalıdır.');
-    
+    customerSubmitLock.current = true;
     try {
       const payload = { ...customerForm, phone };
       if (isEditMode) {
@@ -133,6 +146,7 @@ export default function Customers() {
       closeCustomerModal();
       loadData();
     } catch (err) { setFormError(err.message); }
+    finally { customerSubmitLock.current = false; }
   }
 
   async function handleDeleteCustomer(id, name) {
@@ -158,10 +172,12 @@ export default function Customers() {
 
   async function handleSaleSubmit(e) {
     e.preventDefault();
+    if (saleSubmitLock.current) return;
     setFormError('');
     if (!saleForm.customerId || !saleForm.productId) return setFormError('Müşteri ve ürün seçimi zorunludur.');
     if (!saleForm.quantity || saleForm.quantity < 1) return setFormError('Geçerli bir adet girin.');
     if (saleForm.unitPrice === '' || Number(saleForm.unitPrice) < 0) return setFormError('Geçerli bir fiyat girin.');
+    saleSubmitLock.current = true;
     try {
       await window.electronAPI.makeSale({
         customerId: saleForm.customerId,
@@ -174,10 +190,12 @@ export default function Customers() {
       closeSaleModal();
       loadData();
     } catch (err) { setFormError(err.message); }
+    finally { saleSubmitLock.current = false; }
   }
 
   async function handlePaymentSubmit(e) {
     e.preventDefault();
+    if (paymentSubmitLock.current) return;
     setFormError('');
     if (!paymentForm.customerId) return setFormError('Müşteri seçimi zorunludur.');
     
@@ -192,6 +210,7 @@ export default function Customers() {
         return setFormError(`Tahsilat tutarı, kalan borçtan (${formatUsd(maxAllowed)}) fazla olamaz.`);
       }
     }
+    paymentSubmitLock.current = true;
     try {
       await window.electronAPI.addPayment({
         customerId: paymentForm.customerId,
@@ -203,9 +222,11 @@ export default function Customers() {
       closePaymentModal();
       loadData();
     } catch (err) { setFormError(err.message); }
+    finally { paymentSubmitLock.current = false; }
   }
 
   async function openHistory(customer) {
+    const requestId = ++historyRequest.current;
     setSelectedCustomer(customer);
     setHistoryTab('sales');
     setHistoryExportError('');
@@ -214,10 +235,14 @@ export default function Customers() {
         window.electronAPI.getCustomerSales(customer.id),
         window.electronAPI.getCustomerPayments(customer.id)
       ]);
+      if (requestId !== historyRequest.current) return;
       setSalesHistory(sales);
       setPaymentsHistory(payments);
       setIsHistoryModalOpen(true);
-    } catch (err) { console.error("Geçmiş yüklenemedi:", err); }
+    } catch (err) {
+      console.error('Müşteri geçmişi yüklenemedi:', err);
+      if (requestId === historyRequest.current) setPageError(err.message || 'Müşteri işlem geçmişi yüklenemedi.');
+    }
   }
 
   function openQuickPayment(customer) {
@@ -449,32 +474,32 @@ export default function Customers() {
   return (
     <div className="mx-auto max-w-[1680px] space-y-7 sm:space-y-8">
       
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="space-y-4">
         <div>
           <h2 className="text-3xl font-bold text-slate-800 tracking-tight sm:text-4xl">Cari Hesaplar</h2>
           <p className="mt-1 text-base text-slate-500">Borçlandırma, tahsilat ve kalan bakiye. Para birimleri ayrı gösterilir.</p>
         </div>
         
-        <div className="flex flex-col w-full md:w-auto md:flex-row items-center gap-4">
-          <div className="relative w-full md:w-64">
+        <div className="flex w-full flex-wrap items-center gap-3">
+          <div className="relative min-w-[220px] flex-1">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
               <Search size={18} className="text-slate-400" />
             </div>
             <input type="text" placeholder="Müşteri, telefon veya e-posta ara..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none shadow-sm transition-all text-sm" />
           </div>
-          <select aria-label="Müşteri borç filtresi" value={debtFilter} onChange={(event) => setDebtFilter(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm outline-none focus:border-indigo-500 md:w-auto">
+          <select aria-label="Müşteri borç filtresi" value={debtFilter} onChange={(event) => setDebtFilter(event.target.value)} className="min-w-[150px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm outline-none focus:border-indigo-500 sm:flex-none">
             <option value="all">Tüm müşteriler</option>
             <option value="owing">Borcu olanlar</option>
           </select>
-          <div className="flex w-full md:w-auto gap-3">
-            <button onClick={exportCustomersExcel} disabled={isExportingCustomers} className="flex-1 md:flex-none flex items-center justify-center gap-2 border border-slate-200 bg-white text-slate-700 px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-all shadow-sm text-sm font-medium disabled:opacity-50">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <button onClick={exportCustomersExcel} disabled={isExportingCustomers} className="flex min-w-[100px] flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-50 sm:flex-none">
               <Download size={18} /> <span>{isExportingCustomers ? 'Hazırlanıyor…' : 'Excel'}</span>
             </button>
-            <button onClick={() => setIsCustomerModalOpen(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm text-sm font-medium">
-              <UserPlus size={18} /> <span className="hidden md:inline">Yeni Müşteri</span>
+            <button onClick={() => setIsCustomerModalOpen(true)} className="flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 sm:flex-none">
+              <UserPlus size={18} /> <span>Yeni Müşteri</span>
             </button>
-            <button onClick={() => openQuickSale('')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl hover:bg-indigo-700 hover:shadow-md transition-all shadow-sm text-sm font-medium">
+            <button onClick={() => openQuickSale('')} className="flex min-w-[130px] flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md sm:flex-none">
               <ShoppingBag size={18} /> <span>Satış Yap</span>
             </button>
           </div>
@@ -492,7 +517,7 @@ export default function Customers() {
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-base">
+          <table className="w-full min-w-[860px] text-left text-base">
             <thead>
               <tr className="bg-slate-50/50 text-slate-500 border-b border-slate-100">
                 <th className="px-6 py-4 font-medium">{customerSortHeading('Müşteri / Firma', 'name')}</th>
@@ -511,7 +536,7 @@ export default function Customers() {
                   <tr key={c.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-4">
                       <button type="button" onClick={() => openHistory(c)} className="text-left font-bold text-slate-800 text-base hover:text-indigo-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500" aria-label={`${c.name} cari hareketlerini aç`}>{c.name}</button>
-                      <div className="text-slate-500 mt-0.5">{formatTurkishPhone(c.phone)}</div>
+                      <div className="mt-0.5 whitespace-nowrap text-slate-500">{formatTurkishPhone(c.phone)}</div>
                       {c.email && <div className="mt-0.5 text-xs text-slate-400">{c.email}</div>}
                     </td>
                     

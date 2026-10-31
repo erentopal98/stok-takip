@@ -8,6 +8,8 @@ export default function Products() {
   const [totalProducts, setTotalProducts] = useState(0);
   const [page, setPage] = useState(1);
   const productRequest = useRef(0);
+  const productSubmitLock = useRef(false);
+  const stockSubmitLock = useRef(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formError, setFormError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,6 +42,7 @@ export default function Products() {
   const [isRemovingProduct, setIsRemovingProduct] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
+  const [productsError, setProductsError] = useState('');
 
   const initialFormState = {
     name: '', category: '', brand: '', compatibleModel: '', color: '',
@@ -64,13 +67,17 @@ export default function Products() {
       if (requestId !== productRequest.current) return;
       setProducts(result.items || []);
       setTotalProducts(result.total || 0);
+      setProductsError('');
       setBrands(result.brands || []);
       setCategories(result.categories || []);
       setModels(result.models || []);
       setProductNames(result.names || []);
       if (result.page !== requestedPage) setPage(result.page);
     } catch (err) {
-      if (requestId === productRequest.current) console.error("Ürünler yüklenirken hata:", err);
+      if (requestId === productRequest.current) {
+        console.error('Ürünler yüklenirken hata:', err);
+        setProductsError(err.message || 'Ürün listesi yüklenemedi.');
+      }
     }
   }, [page, searchTerm, brandFilter, categoryFilter, modelFilter, sortBy, sortDirection, pageSize]);
 
@@ -238,12 +245,14 @@ export default function Products() {
 
   async function handleStockSubmit(e) {
     e.preventDefault();
+    if (stockSubmitLock.current) return;
     setStockError('');
     const quantity = Number(stockForm.quantity);
     if (stockForm.unitPrice === '') return setStockError('Bu alış için birim maliyet girin.');
     const unitPrice = Math.round(Number(String(stockForm.unitPrice).replace(',', '.')) * 100);
     if (!Number.isSafeInteger(quantity) || quantity <= 0) return setStockError('Eklenecek adet 0’dan büyük tam sayı olmalıdır.');
     if (!Number.isSafeInteger(unitPrice) || unitPrice < 0) return setStockError('Geçerli bir alış fiyatı girin.');
+    stockSubmitLock.current = true;
     try {
       await window.electronAPI.updateStock({
         productId: selectedStockProduct.id,
@@ -257,7 +266,7 @@ export default function Products() {
       window.dispatchEvent(new Event('dashboard:refresh'));
     } catch (err) {
       setStockError(err.message || 'Stok eklenemedi.');
-    }
+    } finally { stockSubmitLock.current = false; }
   }
 
   function closeModal() {
@@ -273,6 +282,7 @@ export default function Products() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (productSubmitLock.current) return;
     setFormError('');
 
     if (!formData.name || formData.name.trim() === '') {
@@ -288,6 +298,7 @@ export default function Products() {
       return;
     }
 
+    productSubmitLock.current = true;
     try {
       const payload = {
         ...formData,
@@ -311,7 +322,7 @@ export default function Products() {
       window.dispatchEvent(new Event('dashboard:refresh'));
     } catch (err) {
       setFormError(err.message);
-    }
+    } finally { productSubmitLock.current = false; }
   }
 
   async function handleProductRemoval(product) {
@@ -451,6 +462,8 @@ export default function Products() {
           </button>
         </div>
       </div>
+
+      {productsError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{productsError}</div>}
 
       {exportMessage && <p role="status" className="text-sm text-slate-600">{exportMessage}</p>}
 
